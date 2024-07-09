@@ -1,7 +1,6 @@
 library(dplyr)
 
 OCN_to_TIF <- function(OCN, filename, crs="EPSG:26916"){
-  if()
   dem <- raster::rasterFromXYZ(
     xyz=cbind(OCN$FD$X, OCN$FD$Y, OCN$FD$Z),
     res=c(OCN$cellsize, OCN$cellsize),
