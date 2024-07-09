@@ -1,50 +1,82 @@
 library(OCNet)
+library(tidyverse)
 
-# periodic boundary
-data(OCN_250_PB)
-draw_simple_OCN(OCN_250_PB)
+OCN_to_TIF <- function(OCN, filename, crs="EPSG:26916"){
+  if()
+  dem <- raster::rasterFromXYZ(
+    xyz=cbind(OCN$FD$X, OCN$FD$Y, OCN$FD$Z),
+    res=c(OCN$cellsize, OCN$cellsize),
+    crs=crs  # choose this one because it puts our dems in the galapagos, which is sort of neat.
+  ) %>% 
+    raster::writeRaster(filename, overwrite=TRUE)
+}
 
-# v-shaped initial condition
-data(OCN_250_V)
-draw_simple_OCN(OCN_250_V)
+#' Create an OCN, saving any requested intermediate steps
+#' 
+#' @param dimX integer. Longitudinal dimension of the lattice (in number of pixels).
+#' @param dimY integer. Latitudinal dimension of the lattice (in number of pixels).
+#' @param frames integer vector. values of nIter at which to save the OCN state. Defaults to 25 frames between nIter=1 and nIter=40*dimX*dimY. Can also be an integer, indicating the number of frames to use.
+#' @param seed integer. random seed
+#' @param cores integer. number of cores to use in parallel processing
+#' @param return_OCNs bool. Whether to return generated OCNs
+#' @param out_dir string. Output directory for DEM rasters. If NULL (default), do not save rasters.
+#' @param create_OCN_kwargs named list of additional arguments supplied to OCNet::create_OCN other than dimX, dimY, and nIter.
+#' @param landscape_OCN_kwargs named list of additional arguments supplied to OCNet::landscape_OCN.
+#' @param aggregate_OCN_kwargs named list of additional arguments supplied to OCNet::aggregate_OCN.
+create_OCN_series <- function(
+  dimX, dimY, frames=NULL,
+  seed=0,
+  cores=1,
+  return_OCNs=FALSE,
+  out_dir=NULL,
+  create_OCN_kwargs=NULL,
+  landscape_OCN_kwargs=NULL,
+  aggregate_OCN_kwargs=NULL
+){
+  if(is.null(create_OCN_kwargs)) create_OCN_kwargs=list()
+  if(is.null(landscape_OCN_kwargs)) landscape_OCN_kwargs=list()
+  if(is.null(aggregate_OCN_kwargs)) aggregate_OCN_kwargs=list()
 
-river_250_V <- landscape_OCN(OCN_250_V)
-draw_elev2D_OCN(river_250_V)
+  if(!is.null(create_OCN_kwargs$dimX)) stop("dimX should be passed using the dimX argument, not using create_OCN_kwargs")
+  if(!is.null(create_OCN_kwargs$dimY)) stop("dimY should be passed using the dimY argument, not using create_OCN_kwargs")
+  if(!is.null(create_OCN_kwargs$nIter)) stop("nIter should be passed using the frames argument, not using create_OCN_kwargs")
 
-catchments_250_V <- aggregate_OCN(river_250_V)
-draw_subcatchments_OCN(catchments_250_V)
+  if(!is.null(out_dir)) if(!dir.exists(out_dir)) stop(paste("Provided output directory", out_dir, "does not exist."))
 
-# multi-outlet, periodic boundary, hot
-data(OCN_300_4out_PB_hot)
-draw_simple_OCN(OCN_300_4out_PB_hot)
+  if(is.null(frames)){
+    frames <- as.integer(seq(1, 40*dimX*dimY, length.out=25))
+    frames <- sort(frames[!duplicated(frames)])
+  }else if(length(frames) == 1) {
+    frames <- as.integer(seq(1, 40*dimX*dimY, length.out=frames))
+    frames <- sort(frames[!duplicated(frames)])
+  }
 
-# all parametric pixels are outlets
-data(OCN_400_Allout)
-draw_simple_OCN(OCN_400_Allout)
+  fun <- function(nIter){
+    set.seed(seed)
+    OCN <- do.call(create_OCN, c(dimX, dimY, list(nIter=nIter), create_OCN_kwargs)) 
+    OCN <- do.call(landscape_OCN, c(OCN, landscape_OCN_kwargs))
+    OCN <- do.call(aggregate_OCN, c(OCN, aggregate_OCN_kwargs))
+    if(!is.null(out_dir)) OCN_to_TIF(OCN, paste(out_dir, paste0(nIter, ".tif"), sep="/"))
+    if(return_OCNs) return(OCN)
+    else return(NULL)
+  }
 
-# messing around
-# messing around
-set.seed(1)
-OCN <- create_OCN(
-  dimX=30, dimY=120,
-  nOutlet=2, 
-  outletSide=c("E", "W"),
-  outletPos=c(12, 110),
-  typeInitialState="T", #T, V, H
-  showIntermediatePlots=TRUE, nUpdates=20, easyDraw=TRUE,
-  displayUpdates=2,
-  # how long to keep the river network "hot"/plastic for
-  # initialNoCoolingPhase=0, 
-  # how quickly to cool down/freeze the network once cooling starts.
-  # coolingRate=0.3,
+  if(cores == 1) out <- lapply(X=frames, FUN=fun)
+  else out <- parallel::mclapply(X=frames, FUN=fun, mc.cores=cores)
+
+  return(unlist(out))
+}
+
+dimX <- 15
+dimY <- 15
+frames <- as.integer(seq(1, dimX*dimY*40, length.out=100))
+frames <- sort(frames[!duplicated(frames)])
+out_dir <- paste0(getwd(), "/test")
+res <- create_OCN_series(
+  dimX, 
+  dimY, 
+  100, 
+  cores=parallel::detectCores(), 
+  return_OCNs=FALSE, 
+  out_dir=out_dir
 )
-
-draw_simple_OCN(OCN)
-
-river <- landscape_OCN(OCN)
-draw_contour_OCN(river)
-draw_elev2D_OCN(river)
-
-catchments <- aggregate_OCN(river)
-draw_thematic_OCN(catchments, catchments$AG$A)
-draw_subcatchments_OCN(catchments, colPalette = hcl.colors(5, "Viridis"))
