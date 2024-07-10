@@ -16,7 +16,7 @@ OCN_to_TIF <- function(OCN, filename, crs="EPSG:26916"){
 #' @param frames integer vector. values of nIter at which to save the OCN state. Defaults to 25 frames between nIter=1 and nIter=40*dimX*dimY. Can also be an integer, indicating the number of frames to use.
 #' @param seed integer. random seed
 #' @param cores integer. number of cores to use in parallel processing
-#' @param return_OCNs bool. Whether to return generated OCNs
+#' @param return_OCNs string, one of "none", "all", or "last". If "last" (default), return the final OCN. If "none" return NULL. If "all", return the OCN for each frame.
 #' @param out_dir string. Output directory for DEM rasters. If NULL (default), do not save rasters.
 #' @param progress bool. If TRUE (default), print progress.
 #' @param create_OCN_kwargs named list of additional arguments supplied to OCNet::create_OCN other than dimX, dimY, and nIter. Can be NULL.
@@ -26,7 +26,7 @@ create_OCN_series <- function(
   dimX, dimY, frames=NULL,
   seed=0,
   cores=1,
-  return_OCNs=FALSE,
+  return_OCNs="last",
   out_dir=NULL,
   progress=TRUE,
   create_OCN_kwargs=list(displayUpdates=0),
@@ -56,14 +56,37 @@ create_OCN_series <- function(
     OCN <- do.call(OCNet::create_OCN, c(dimX, dimY, list(nIter=nIter), create_OCN_kwargs)) 
     OCN <- do.call(OCNet::landscape_OCN, c(OCN, landscape_OCN_kwargs))
     OCN <- do.call(OCNet::aggregate_OCN, c(OCN, aggregate_OCN_kwargs))
+    
     if(!is.null(out_dir)) OCN_to_TIF(OCN, paste(out_dir, paste0(nIter, ".tif"), sep="/"))
-    if(progress) print(paste0("Completed Frame ", nIter , "/", frames[length(frames)]))
-    if(return_OCNs) return(OCN)
-    else return(NULL)
+    
+    # print(paste(nIter, frames[length(frames)], length(frames)))
+    # if(progress) print(paste0("Completed Frame ", nIter%/%frames[length(frames)]) , "/", length(frames))
+    
+    if(return_OCNs == "all") return(OCN)
+    if(return_OCNs == "last" && nIter == frames[length(frames)]) return(OCN)
+    return(NULL)
   }
 
   if(cores == 1) out <- lapply(X=frames, FUN=fun)
   else out <- parallel::mclapply(X=frames, FUN=fun, mc.cores=cores)
 
+  if(return_OCNs == "last"){
+    return(out[[length(out)]])
+  }
   return(unlist(out))
+}
+
+network_to_df <- function(OCN){
+  return(data_frame(
+    X=OCN$FD$X,
+    Y=OCN$FD$Y,
+    Z=OCN$FD$Z,
+    A=OCN$FD$A,
+    slope=OCN$FD$slope,
+    toCM=OCN$FD$toCM,
+    toRN=OCN$FD$toRN,
+    leng=OCN$FD$leng,
+    DownNode=OCN$FD$DownNode,
+    Node=OCN$FD$Node	
+  ))
 }
