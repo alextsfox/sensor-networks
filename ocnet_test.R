@@ -1,11 +1,13 @@
 library(OCNet)
 library(tidyverse)
+library(ggplot2)
 
 source(paste(getwd(), "create_OCN_series.R", sep="/"))
 
-dimX <- 250
-dimY <- 250
-frames <- as.integer(seq(1, dimX*dimY*40, length.out=10))
+dimX <- 500
+dimY <- 500
+cellsize <- 100
+frames <- as.integer(seq(1, dimX*dimY*40, length.out=16))
 
 frames <- sort(frames[!duplicated(frames)])
 
@@ -14,7 +16,7 @@ frames <- sort(frames[!duplicated(frames)])
 hot_kwargs <- list(
   outletSide="S",
   outletPos=dimX,
-  cellsize=100,
+  cellsize=cellsize,
   initialNoCoolingPhase=OCN_250_hot$initialNoCoolingPhase,
   coolingRate=OCN_250_hot$coolingRate,
   typeInitialState="V",
@@ -24,7 +26,7 @@ hot_kwargs <- list(
 cold_kwargs <- list(
   outletSide="S",
   outletPos=dimX,
-  cellsize=100,
+  cellsize=cellsize,
   initialNoCoolingPhase=OCN_250_cold$initialNoCoolingPhase,
   coolingRate=OCN_250_cold$coolingRate,
   typeInitialState="V",
@@ -34,7 +36,7 @@ cold_kwargs <- list(
 lw_kwargs <- list(
   outletSide="S",
   outletPos=dimX,
-  cellsize=100,
+  cellsize=cellsize,
   initialNoCoolingPhase=OCN_250$initialNoCoolingPhase,
   coolingRate=OCN_250$coolingRate,
   typeInitialState="V",
@@ -45,57 +47,43 @@ cold <- create_OCN_series(
   dimX, 
   dimY, 
   frames, 
-  cores=parallel::detectCores(), 
-  return_OCNs=TRUE, 
-  out_dir=paste0(getwd(), "/dems/cold"),
-  progress=TRUE,
+  cores=8, 
+  return_OCNs="last", 
+  out_dir=paste0(getwd(), "/dems/500/cold"),
+  # progress=TRUE,
   create_OCN_kwargs=cold_kwargs,
-)
-
-lw <- create_OCN_series(
-  dimX, 
-  dimY, 
-  frames, 
-  cores=parallel::detectCores(), 
-  return_OCNs=TRUE, 
-  out_dir=paste0(getwd(), "/dems/lw"),
-  progress=TRUE,
-  create_OCN_kwargs=lw_kwargs
 )
 
 hot <- create_OCN_series(
   dimX, 
   dimY, 
   frames, 
-  cores=parallel::detectCores(), 
-  return_OCNs=TRUE, 
-  out_dir=paste0(getwd(), "/dems/hot"),
-  progress=TRUE,
+  cores=8, 
+  return_OCNs="last", 
+  out_dir=paste0(getwd(), "/dems/500/hot"),
+  # progress=TRUE,
   create_OCN_kwargs=hot_kwargs
 )
 
-# OCN <- create_OCN(
-#   dimX, dimY,
-#   outletSide="S",
-#   outletPos=dimX,
-#   cellsize=100,
-#   initialNoCoolingPhase=OCN_250_hot$initialNoCoolingPhase,
-#   coolingRate=OCN_250_hot$coolingRate,
-#   typeInitialState="V",
-#   saveEnergy=TRUE
-# ) %>% 
-#   landscape_OCN() %>% 
-#   aggregate_OCN() 
-# draw_simple_OCN(OCN)
-
-# plot(log(OCN$energy))
-
-# 500x500, 100m resolution
-# 10 DEMs for each hot, lukewarm, cold
-# dems, energy profile
+lw <- create_OCN_series(
+  dimX, 
+  dimY, 
+  frames, 
+  cores=8, 
+  return_OCNs="last", 
+  out_dir=paste0(getwd(), "/dems/500/lw"),
+  # progress=TRUE,
+  create_OCN_kwargs=lw_kwargs
+)
 
 
+frame_energy <- data.frame(iter=frames, cold=cold$energy[frames], lw=lw$energy[frames], hot=hot$energy[frames])
+write_csv(frame_energy, paste0(getwd(), "/dems/500/frame_energy.csv"))
 
-# hot
+energy <- data.frame(iter=1:frames[length(frames)], cold=cold$energy, lw=lw$energy, hot=hot$energy)
+write_csv(energy, paste0(getwd(), "/dems/500/energy.csv"))
 
-
+ggplot(energy[1:frames[length(frames)]:100]) +
+  geom_line(aes(x=iter, y=cold), color="blue") +
+  geom_line(aes(x=iter, y=lw), color="orange") +
+  geom_line(aes(x=iter, y=hot), color="red")

@@ -28,7 +28,7 @@ create_OCN_series <- function(
   cores=1,
   return_OCNs="last",
   out_dir=NULL,
-  progress=TRUE,
+  # progress=TRUE,
   create_OCN_kwargs=list(displayUpdates=0),
   landscape_OCN_kwargs=NULL,
   aggregate_OCN_kwargs=NULL
