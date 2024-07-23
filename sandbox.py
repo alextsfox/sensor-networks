@@ -46,6 +46,8 @@ def is_cross_flow(down_nodes, node, down_node, node_neighbors, X_idx, Y_idx):
     # and is invalid
     if (down_nodes[ortho_node_1] == ortho_node_2) or (down_nodes[ortho_node_2] == ortho_node_1):
         return True
+
+    return False
     
 
 def get_neighbs_of_i(i, nrow, ncol):
