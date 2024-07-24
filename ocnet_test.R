@@ -4,8 +4,8 @@ library(ggplot2)
 
 source(paste(getwd(), "create_OCN_series.R", sep="/"))
 
-dimX <- 500
-dimY <- 500
+dimX <- 10
+dimY <- 10
 cellsize <- 100
 frames <- as.integer(seq(1, dimX*dimY*40, length.out=16))
 
@@ -42,6 +42,8 @@ lw_kwargs <- list(
   typeInitialState="V",
   saveEnergy=TRUE
 )
+
+create_OCN(dimX=10, dimY=10)
 
 cold <- create_OCN_series(
   dimX, 

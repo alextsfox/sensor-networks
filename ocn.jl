@@ -6,15 +6,16 @@ using SparseArrays
 using SparseSparse
 using StatsBase
 using ProgressBars
+using Plots
 
 compute_A(W, alpha) = inv(I - transpose(W))*alpha
 
-compute_H(H, gamma) = sum(A.^gamma)
+compute_H(A, gamma) = sum(A.^gamma)
 
 is_invertible(M) = rank(M) == size(M)[1]
 
 function rewire_node!(W, node, down_node_new)
-    W[node, :] = sparsevec(Dict(node => 1.0), size(W)[2])
+    @views W[node, :] = sparsevec(Dict(down_node_new => 1.0), size(W)[2])
 end
 
 function get_neighbs_of_i(i, nrow, ncol)
@@ -54,36 +55,36 @@ function get_neighbs_of_i(i, nrow, ncol)
 end
 
 function is_cross_flow(down_nodes, node, down_node, node_neighbors, X_idx, Y_idx)
-    ortho_idx_1 = (X_idx[node_neighbors] .== X_idx[node]) .& (Y_idx[node_neighbors] .== Y_idx[down_node])
-    ortho_node_1 = node_neighbors[ortho_idx_1]
+    @views ortho_idx_1 = (X_idx[node_neighbors] .== X_idx[node]) .& (Y_idx[node_neighbors] .== Y_idx[down_node])
+    @views ortho_node_1 = node_neighbors[ortho_idx_1]
 
-    ortho_idx_2 = (X_idx[node_neighbors] .== X_idx[down_node]) .& (Y_idx[node_neighbors] .== Y_idx[node])
-    ortho_node_2 = node_neighbors[ortho_idx_2]
+    @views ortho_idx_2 = (X_idx[node_neighbors] .== X_idx[down_node]) .& (Y_idx[node_neighbors] .== Y_idx[node])
+    @views ortho_node_2 = node_neighbors[ortho_idx_2]
 
     # proposed connection is not diagonal; no crossing is possible
     if (ortho_node_1 == down_node) || (ortho_node_2 == down_node)
         return false
-    end
     
-    # proposed connection is diagonal, need to check for a possible crossing
-    # see if the orthogonal nodes are connected. If they are, then our diagonal crossing must cross that path
-    # and is invalid
-    # print(ortho_node_1, ortho_node_2, down_nodes)
-    if (length(ortho_node_1) == 1) && (length(ortho_node_2) == 1) && (ortho_node_1[1] <= length(down_nodes)) && (ortho_node_2[1] <= length(down_nodes))
-        if (down_nodes[ortho_node_1] == ortho_node_2) || (down_nodes[ortho_node_2] == ortho_node_1)
-            return true
-        end
+    elseif length(ortho_node_1) < 1 || length(ortho_node_2) < 1  # empty, can occur for edge nodes``
+        return false
+    elseif @views (
+        (ortho_node_1[1] <= length(down_nodes)) && (ortho_node_2[1] <= length(down_nodes))  # diagonal
+        && (down_nodes[ortho_node_1] == ortho_node_2) || (down_nodes[ortho_node_2] == ortho_node_1)  # crossing
+    )
+        return true
     end
+
     return false
 end
 
-Random.seed!(1234)
+Random.seed!(1236)
 cell_area = 1.0
 gamma = 0.5
-nrow, ncol = 5, 5
+nrow, ncol = 100, 100
 n_iter = nrow*ncol*40
 T = exp.(-10*LinRange(0, 1, n_iter))
 outlets = [nrow*ncol]
+sort!(outlets)
 
 
 alpha = cell_area*ones(nrow*ncol, 1)
@@ -108,7 +109,8 @@ end
 
 W = sparse(W)
 W_nzrow, W_nzcol, _ = findnz(W)
-down_nodes = W_nzcol[W_nzrow]
+down_nodes = Int.(-1*ones(ncol*nrow))
+down_nodes[W_nzrow] = W_nzcol[W_nzrow]
 
 A = compute_A(W, alpha)
 H = compute_H(A, gamma)
@@ -117,40 +119,37 @@ energy = zeros(n_iter)
 for i ∈ ProgressBar(1:n_iter)
     valid_rewirings = spzeros(nrow*ncol, nrow*ncol)
 
-
     while true
         while true
             W_new = copy(W)
             node = sample(rewireable_nodes)
-            down_node_new = sample(neighbors[node])
-            rewire_node!(W_new, node, down_node_new)
-            if valid_rewirings[node, down_node_new] == 1
-                println("Old Valid")
+            @views down_node_new = sample(neighbors[node])
+            if @views valid_rewirings[node, down_node_new] == 1
                 break
-            elseif !is_cross_flow(down_nodes, node, down_node_new, neighbors[node], X_idx, Y_idx) && is_invertible(sparse(I - transpose(W_new)))
-                println("New Valid")
-                valid_rewirings[node, down_node_new] = 1
-                break
+            elseif !is_cross_flow(down_nodes, node, down_node_new, neighbors[node], X_idx, Y_idx)
+                rewire_node!(W_new, node, down_node_new)
+                if is_invertible(sparse(I - transpose(W_new)))  # slowish
+                    valid_rewirings[node, down_node_new] = 1
+                    break
+                end
             end
         end
-        A_new = compute_A(W_new, alpha)
+        
+        A_new = compute_A(W_new, alpha)  # slow
         H_new = compute_H(A_new, gamma)
+
         if H_new < H
-            println("Better energy")
-            print(H_new)
             break
-        elseif exp(-(H_new - H)/T[i]) > rand()
-            println("Passed MH test")
-            print(H_new, " ", exp(-(H_new - H)/T[i]))
+        elseif @views exp(-(H_new - H)/T[i]) > rand()
             break
         end
-        println("Failed MH")
-        print(H_new, exp(-(H_new - H)/T[i]))
     end
 
     energy[i] = H_new
     A = A_new
+    H = H_new
     W = copy(W_new)
+    
     W_nzrow, W_nzcol, _ = findnz(W)
-    down_nodes = W_nzcol[W_nzrow]
+    down_nodes[W_nzrow] = W_nzcol[W_nzrow]
 end
