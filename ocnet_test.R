@@ -9,10 +9,6 @@ dimY <- 10
 cellsize <- 100
 frames <- as.integer(seq(1, dimX*dimY*40, length.out=16))
 
-frames <- sort(frames[!duplicated(frames)])
-
-
-
 hot_kwargs <- list(
   outletSide="S",
   outletPos=dimX,
@@ -43,49 +39,47 @@ lw_kwargs <- list(
   saveEnergy=TRUE
 )
 
-create_OCN(dimX=10, dimY=10)
+hot <- create_OCN_series(
+  dimX, 
+  dimY, 
+  frames=frames, 
+  cores=8, 
+  return_OCNs="last", 
+  out_dir=file.path(getwd(), "dems", dimX, "hot"),
+  create_OCN_kwargs=hot_kwargs
+)
 
 cold <- create_OCN_series(
   dimX, 
   dimY, 
-  frames, 
+  frames=frames, 
   cores=8, 
   return_OCNs="last", 
-  out_dir=paste0(getwd(), "/dems/500/cold"),
-  # progress=TRUE,
+  out_dir=file.path(getwd(), "dems", dimX, "cold"),
   create_OCN_kwargs=cold_kwargs,
 )
 
-hot <- create_OCN_series(
-  dimX, 
-  dimY, 
-  frames, 
-  cores=8, 
-  return_OCNs="last", 
-  out_dir=paste0(getwd(), "/dems/500/hot"),
-  # progress=TRUE,
-  create_OCN_kwargs=hot_kwargs
-)
 
 lw <- create_OCN_series(
   dimX, 
   dimY, 
-  frames, 
+  frames=frames, 
   cores=8, 
   return_OCNs="last", 
-  out_dir=paste0(getwd(), "/dems/500/lw"),
-  # progress=TRUE,
+  out_dir=file.path(getwd(), "dems", dimX, "lw"),
   create_OCN_kwargs=lw_kwargs
 )
 
-
+# save frame energy
 frame_energy <- data.frame(iter=frames, cold=cold$energy[frames], lw=lw$energy[frames], hot=hot$energy[frames])
-write_csv(frame_energy, paste0(getwd(), "/dems/500/frame_energy.csv"))
+write_csv(frame_energy, file.path(getwd(), "dems", dimX, "frame_energy.csv"))
 
+# save the full energy series (HUGE)
 energy <- data.frame(iter=1:frames[length(frames)], cold=cold$energy, lw=lw$energy, hot=hot$energy)
-write_csv(energy, paste0(getwd(), "/dems/500/energy.csv"))
+write_csv(energy, file.path(getwd(), "dems", dimX, "energy.csv"))
 
-ggplot(energy[1:frames[length(frames)]:100]) +
+# plot the energy timeseries series
+ggplot(energy[seq(1, nrow(energy), nrow(energy)%/%1000), ]) +
   geom_line(aes(x=iter, y=cold), color="blue") +
   geom_line(aes(x=iter, y=lw), color="orange") +
   geom_line(aes(x=iter, y=hot), color="red")
